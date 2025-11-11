@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bitcoin/USDT Real-Time Price Chart
 
-## Getting Started
+A real-time Bitcoin/USDT price chart application built with Rust, CCXT (Python), and React (Next.js). The application displays 1-minute timeframe OHLCV data with efficient WebSocket updates.
 
-First, run the development server:
+## Architecture
+
+- **Backend**: Rust server using Axum for WebSocket communication
+- **Data Fetching**: Python script using CCXT library to fetch cryptocurrency data from Binance
+- **Frontend**: React (Next.js) with Recharts for visualization
+- **Communication**: WebSocket for real-time data streaming
+
+## Prerequisites
+
+- Rust (latest stable version)
+- Python 3.8+
+- Node.js 18+ and npm
+- Cargo (Rust package manager)
+
+## Setup Instructions
+
+### 1. Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Install Node.js Dependencies
+
+```bash
+npm install
+```
+
+### 3. Build and Run the Rust Backend
+
+In one terminal window:
+
+```bash
+cargo run
+```
+
+The Rust server will start on `ws://localhost:3001/ws`
+
+### 4. Run the Next.js Frontend
+
+In another terminal window:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The frontend will be available at [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. The Rust backend spawns a Python process that uses CCXT to fetch Bitcoin/USDT 1-minute OHLCV data from Binance
+2. The backend maintains WebSocket connections and sends updates every 60 seconds
+3. The React frontend connects to the WebSocket and displays the data in a real-time chart
+4. The chart automatically updates with new price data and shows connection status
 
-## Learn More
+## Features
 
-To learn more about Next.js, take a look at the following resources:
+- Real-time price updates every minute
+- Beautiful, responsive chart visualization
+- Connection status indicator
+- Price change percentage display
+- Automatic reconnection on disconnect
+- Dark mode support
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+.
+├── src/
+│   └── main.rs              # Rust backend server
+├── scripts/
+│   └── fetch_ohlcv.py      # Python script using CCXT
+├── app/
+│   ├── components/
+│   │   └── BitcoinChart.tsx # React chart component
+│   └── page.tsx             # Main page
+├── Cargo.toml               # Rust dependencies
+├── requirements.txt         # Python dependencies
+└── package.json             # Node.js dependencies
+```
 
-## Deploy on Vercel
+## Troubleshooting
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **WebSocket connection fails**: Make sure the Rust backend is running on port 3001
+- **Python script errors**: Ensure CCXT is installed (`pip install -r requirements.txt`)
+- **Chart not updating**: Check browser console for WebSocket errors
