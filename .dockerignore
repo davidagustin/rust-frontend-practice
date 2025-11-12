@@ -1,0 +1,9 @@
+target/
+.git/
+.gitignore
+node_modules/
+.next/
+.env*
+*.log
+README.md
+

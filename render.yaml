@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: bitcoin-price-server
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: 10000
+    healthCheckPath: /ws
+

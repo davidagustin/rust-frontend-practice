@@ -144,12 +144,21 @@ async fn ws_handler(ws: WebSocketUpgrade) -> Response {
 
 #[tokio::main]
 async fn main() {
+    // Read port from environment variable, default to 3001 for local development
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "3001".to_string())
+        .parse::<u16>()
+        .expect("PORT must be a valid number");
+    
+    // Bind to 0.0.0.0 to accept connections from any interface (required for production)
+    let bind_address = format!("0.0.0.0:{}", port);
+    
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .layer(tower_http::cors::CorsLayer::permissive());
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await.unwrap();
-    println!("🚀 Rust server running on ws://127.0.0.1:3001/ws");
+    let listener = tokio::net::TcpListener::bind(&bind_address).await.unwrap();
+    println!("🚀 Rust server running on ws://0.0.0.0:{}/ws", port);
     println!("📊 Ready to accept WebSocket connections...");
     
     axum::serve(listener, app).await.unwrap();
