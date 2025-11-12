@@ -8,7 +8,7 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::process::Command;
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, timeout, Duration};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CandleData {
@@ -29,10 +29,14 @@ async fn fetch_ohlcv_data() -> Result<Vec<CandleData>, Box<dyn std::error::Error
     // Get the script path relative to the project root
     let script_path = PathBuf::from("scripts/fetch_ohlcv.py");
     
-    let output = Command::new("python3")
-        .arg(&script_path)
-        .output()
-        .await?;
+    // Wrap command execution with 10-second timeout to prevent hanging
+    let output = timeout(
+        Duration::from_secs(10),
+        Command::new("python3")
+            .arg(&script_path)
+            .output()
+    )
+    .await??;
 
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr);
@@ -45,11 +49,42 @@ async fn fetch_ohlcv_data() -> Result<Vec<CandleData>, Box<dyn std::error::Error
 }
 
 async fn handle_socket(mut socket: WebSocket) {
-    // Send initial data immediately
-    if let Ok(candles) = fetch_ohlcv_data().await {
-        let update = PriceUpdate { candles };
-        if let Ok(json) = serde_json::to_string(&update) {
-            let _ = socket.send(Message::Text(json)).await;
+    // Send connection confirmation immediately (empty data to establish connection)
+    let initial_update = PriceUpdate {
+        candles: Vec::new(),
+    };
+    if let Ok(json) = serde_json::to_string(&initial_update) {
+        let _ = socket.send(Message::Text(json)).await;
+    }
+
+    // Fetch initial data in background (non-blocking)
+    let initial_fetch = tokio::spawn(async {
+        fetch_ohlcv_data().await
+    });
+
+    // Wait for initial fetch with timeout
+    match timeout(Duration::from_secs(15), initial_fetch).await {
+        Ok(Ok(Ok(candles))) if !candles.is_empty() => {
+            let update = PriceUpdate { candles };
+            if let Ok(json) = serde_json::to_string(&update) {
+                let _ = socket.send(Message::Text(json)).await;
+            }
+        }
+        Ok(Ok(Err(e))) => {
+            eprintln!("Error fetching initial data: {}", e);
+            // Send error message to client
+            let error_update = PriceUpdate {
+                candles: Vec::new(),
+            };
+            if let Ok(json) = serde_json::to_string(&error_update) {
+                let _ = socket.send(Message::Text(json)).await;
+            }
+        }
+        Ok(Err(_)) => {
+            eprintln!("Initial fetch task failed");
+        }
+        Err(_) => {
+            eprintln!("Initial fetch timed out");
         }
     }
 
@@ -59,13 +94,16 @@ async fn handle_socket(mut socket: WebSocket) {
         tokio::select! {
             _ = interval.tick() => {
                 match fetch_ohlcv_data().await {
-                    Ok(candles) => {
+                    Ok(candles) if !candles.is_empty() => {
                         let update = PriceUpdate { candles };
                         if let Ok(json) = serde_json::to_string(&update) {
                             if socket.send(Message::Text(json)).await.is_err() {
                                 break;
                             }
                         }
+                    }
+                    Ok(_) => {
+                        eprintln!("Received empty candle data");
                     }
                     Err(e) => {
                         eprintln!("Error fetching data: {}", e);
@@ -74,15 +112,30 @@ async fn handle_socket(mut socket: WebSocket) {
             }
             result = socket.recv() => {
                 match result {
-                    Some(Ok(Message::Close(_))) => break,
-                    Some(Ok(_)) => {
-                        // Handle ping/pong or other messages
+                    Some(Ok(Message::Close(_))) => {
+                        println!("Client closed connection");
+                        break;
                     }
-                    Some(Err(_)) | None => break,
+                    Some(Ok(Message::Ping(_))) => {
+                        let _ = socket.send(Message::Pong(vec![])).await;
+                    }
+                    Some(Ok(_)) => {
+                        // Handle other messages
+                    }
+                    Some(Err(e)) => {
+                        eprintln!("WebSocket error: {:?}", e);
+                        break;
+                    }
+                    None => {
+                        println!("WebSocket stream ended");
+                        break;
+                    }
                 }
             }
         }
     }
+    
+    println!("WebSocket connection closed");
 }
 
 async fn ws_handler(ws: WebSocketUpgrade) -> Response {
@@ -97,6 +150,7 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await.unwrap();
     println!("🚀 Rust server running on ws://127.0.0.1:3001/ws");
+    println!("📊 Ready to accept WebSocket connections...");
     
     axum::serve(listener, app).await.unwrap();
 }
