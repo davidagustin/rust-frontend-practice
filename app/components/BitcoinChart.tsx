@@ -29,6 +29,7 @@ export default function BitcoinChart() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [wsError, setWsError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -41,7 +42,23 @@ export default function BitcoinChart() {
 
   const connectWebSocket = () => {
     try {
-      const ws = new WebSocket('ws://localhost:3001/ws');
+      // Use environment variable for WebSocket URL, fallback to localhost for local development
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 
+        (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+          ? 'ws://localhost:3001/ws' 
+          : null);
+      
+      if (!wsUrl) {
+        const errorMsg = 'WebSocket URL not configured. Set NEXT_PUBLIC_WS_URL environment variable or deploy the Rust backend.';
+        console.warn(errorMsg);
+        setWsError(errorMsg);
+        setIsConnected(false);
+        return;
+      }
+      
+      setWsError(null);
+
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -69,6 +86,7 @@ export default function BitcoinChart() {
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
+        setWsError('Failed to connect to WebSocket server. Make sure the Rust backend is running.');
         setIsConnected(false);
       };
 
@@ -164,6 +182,16 @@ export default function BitcoinChart() {
         <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
           1-minute timeframe • {candles.length} candles
         </p>
+        {wsError && (
+          <div className="mt-2 p-3 bg-yellow-100 dark:bg-yellow-900 border border-yellow-400 dark:border-yellow-700 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              <strong>Backend not available:</strong> {wsError}
+            </p>
+            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+              For production, deploy the Rust backend and set NEXT_PUBLIC_WS_URL environment variable in Vercel.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-4">
